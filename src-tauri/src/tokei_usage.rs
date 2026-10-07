@@ -551,18 +551,10 @@ fn load_usage(home: &Path, settings: GroupSettings) -> TokeiUsage {
 pub async fn get_tokei_usage(app: tauri::AppHandle) -> Result<TokeiUsage, String> {
     let home = home()?;
     let settings = load_groups(&settings_path(&app)?, &config(&home))?;
-    let data_dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|_| "settings_unavailable")?;
     tauri::async_runtime::spawn_blocking(move || {
         let mut usage = load_usage(&home, settings);
-        crate::usage_sync::merge_managed_usage(&data_dir, &mut usage);
-        let device_id = crate::usage_sync::settings_at(&data_dir)
-            .ok()
-            .flatten()
-            .map(|settings| settings.device_id)
-            .or_else(|| config(&home)["device_id"].as_str().map(str::to_owned));
+        // Local-safe build: do not merge cloud/Git snapshots or peer caches.
+        let device_id = config(&home)["device_id"].as_str().map(str::to_owned);
         usage.local_group_id = local_group_id(&usage.groups, device_id.as_deref());
         usage
     })
