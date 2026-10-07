@@ -240,15 +240,16 @@ pub async fn save_tokei_groups(
     settings: GroupSettings,
     expected: GroupSettings,
 ) -> Result<GroupSettings, String> {
-    let data = app
-        .path()
-        .app_config_dir()
-        .map_err(|_| "settings_unavailable")?;
-    if crate::cloud_sync::config(&data)?.is_some() {
-        return crate::cloud_sync::save_groups(&data, &settings, &expected).await;
+    // Local-safe build: group edits stay in the per-user app config only.
+    let path = settings_path(&app)?;
+    let current = load_groups(&path, &config(&home()?))?;
+    if current != expected {
+        return Err("group_settings_conflict_reload".into());
     }
-    crate::shared_settings::edit_groups(&data, &settings, &expected)
+    save_groups(&path, &settings)?;
+    Ok(settings)
 }
+
 pub(crate) fn save_groups(path: &Path, settings: &GroupSettings) -> Result<(), String> {
     let _guard = SETTINGS_LOCK.lock().map_err(|_| "settings_unavailable")?;
     validate_groups(settings)?;
