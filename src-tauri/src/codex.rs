@@ -7,9 +7,7 @@ use std::{
     time::Duration,
 };
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, TimeZone, Timelike, Utc};
-use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION};
 use serde::Serialize;
 use serde_json::Value;
 use tokio::{
@@ -20,10 +18,6 @@ use tokio::{
 
 use crate::models::{ProviderSnapshot, RateLimitSnapshot, UsageWindow};
 
-const USAGE_URL: &str = "https://chatgpt.com/backend-api/wham/usage";
-const CREDITS_URL: &str = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits";
-const MAX_RESPONSE_BYTES: u64 = 1024 * 1024;
-const MAX_AUTH_BYTES: u64 = 256 * 1024;
 const WEEKLY_WINDOW_MINUTES: u64 = 10_080;
 const COMPLETE_DAY_GRACE_SECONDS: i64 = 15 * 60;
 const APP_SERVER_TIMEOUT: Duration = Duration::from_secs(6);
@@ -50,76 +44,14 @@ struct QuotaObservation {
     window_minutes: u64,
 }
 
-struct Auth {
-    access_token: String,
-    account_id: Option<String>,
-}
-
 fn codex_home() -> Option<PathBuf> {
     std::env::var_os("CODEX_HOME")
         .map(PathBuf::from)
         .or_else(|| dirs::home_dir().map(|home| home.join(".codex")))
 }
 
-fn auth_path() -> Option<PathBuf> {
-    codex_home().map(|home| home.join("auth.json"))
-}
-
 fn pick_string<'a>(value: &'a Value, keys: &[&str]) -> Option<&'a str> {
     keys.iter().find_map(|key| value.get(*key)?.as_str())
-}
-
-fn account_id_from_jwt(token: &str) -> Option<String> {
-    let payload = token.split('.').nth(1)?;
-    let bytes = URL_SAFE_NO_PAD.decode(payload).ok()?;
-    let value: Value = serde_json::from_slice(&bytes).ok()?;
-    pick_string(
-        &value,
-        &[
-            "https://api.openai.com/auth.chatgpt_account_id",
-            "chatgpt_account_id",
-        ],
-    )
-    .map(str::to_owned)
-}
-
-fn load_auth() -> Result<Auth, &'static str> {
-    let path = auth_path().ok_or("Codex login was not found.")?;
-    let metadata = fs::metadata(&path).map_err(|_| "Please sign in to Codex Desktop first.")?;
-    if !metadata.is_file() || metadata.len() > MAX_AUTH_BYTES {
-        return Err("Codex login data is unavailable.");
-    }
-    let raw = fs::read_to_string(path).map_err(|_| "Please sign in to Codex Desktop first.")?;
-    let value: Value = serde_json::from_str(&raw).map_err(|_| "Codex login format has changed.")?;
-    let tokens = value.get("tokens").unwrap_or(&value);
-    let access_token = pick_string(tokens, &["access_token", "accessToken"])
-        .ok_or("Codex login expired. Please sign in again.")?
-        .to_owned();
-    let account_id = pick_string(tokens, &["account_id", "accountId"])
-        .map(str::to_owned)
-        .or_else(|| account_id_from_jwt(&access_token));
-    Ok(Auth {
-        access_token,
-        account_id,
-    })
-}
-
-fn headers(auth: &Auth) -> Result<HeaderMap, &'static str> {
-    let mut result = HeaderMap::new();
-    let mut bearer = HeaderValue::from_str(&format!("Bearer {}", auth.access_token))
-        .map_err(|_| "Codex login data is invalid.")?;
-    bearer.set_sensitive(true);
-    result.insert(AUTHORIZATION, bearer);
-    result.insert(ACCEPT, HeaderValue::from_static("application/json"));
-    result.insert("originator", HeaderValue::from_static("Codex Desktop"));
-    result.insert("OAI-Product-Sku", HeaderValue::from_static("CODEX"));
-    if let Some(account_id) = &auth.account_id {
-        let mut value =
-            HeaderValue::from_str(account_id).map_err(|_| "Account identifier is invalid.")?;
-        value.set_sensitive(true);
-        result.insert("ChatGPT-Account-Id", value);
-    }
-    Ok(result)
 }
 
 fn number_with_key<'a>(value: &'a Value, keys: &[&'a str]) -> Option<(&'a str, f64)> {
@@ -811,192 +743,13 @@ async fn fetch_app_server_snapshot() -> Result<ProviderSnapshot, String> {
     parse_app_server_snapshot(&result, observed_at)
 }
 
-fn safe_http_failure(status: reqwest::StatusCode) -> (&'static str, &'static str) {
-    match status.as_u16() {
-        401 | 403 => ("signed_out", "Codex login expired. Please sign in again."),
-        429 => (
+pub async fn fetch_snapshot(_client: &reqwest::Client) -> ProviderSnapshot {
+    match fetch_app_server_snapshot().await {
+        Ok(snapshot) => snapshot,
+        Err(message) => ProviderSnapshot::failure(
             "unavailable",
-            "Quota service is rate limited. It will retry automatically.",
+            &format!("Codex App Server unavailable in local-safe mode: {message}"),
         ),
-        _ => ("unavailable", "Quota service is temporarily unavailable."),
-    }
-}
-
-async fn limited_json(mut response: reqwest::Response) -> Result<Value, ()> {
-    if response
-        .content_length()
-        .is_some_and(|length| length > MAX_RESPONSE_BYTES)
-    {
-        return Err(());
-    }
-    let mut bytes = Vec::new();
-    while let Some(chunk) = response.chunk().await.map_err(|_| ())? {
-        if bytes.len().saturating_add(chunk.len()) as u64 > MAX_RESPONSE_BYTES {
-            return Err(());
-        }
-        bytes.extend_from_slice(&chunk);
-    }
-    serde_json::from_slice(&bytes).map_err(|_| ())
-}
-
-pub async fn fetch_snapshot(client: &reqwest::Client) -> ProviderSnapshot {
-    if let Ok(snapshot) = fetch_app_server_snapshot().await {
-        return snapshot;
-    }
-    fetch_legacy_snapshot(client).await
-}
-
-async fn fetch_legacy_snapshot(client: &reqwest::Client) -> ProviderSnapshot {
-    let auth = match load_auth() {
-        Ok(value) => value,
-        Err(message) => return ProviderSnapshot::failure("signed_out", message),
-    };
-    let request_headers = match headers(&auth) {
-        Ok(value) => value,
-        Err(message) => return ProviderSnapshot::failure("signed_out", message),
-    };
-
-    let (usage_result, credits_result) = tokio::join!(
-        client
-            .get(USAGE_URL)
-            .headers(request_headers.clone())
-            .send(),
-        client.get(CREDITS_URL).headers(request_headers).send(),
-    );
-
-    let usage_response = match usage_result {
-        Ok(response) if response.status().is_success() => response,
-        Ok(response) => {
-            let (status, message) = safe_http_failure(response.status());
-            return ProviderSnapshot::failure(status, message);
-        }
-        Err(_) => {
-            return ProviderSnapshot::failure(
-                "unavailable",
-                "Network unavailable. It will retry automatically.",
-            )
-        }
-    };
-    let usage: Value = match limited_json(usage_response).await {
-        Ok(value) => value,
-        Err(_) => {
-            return ProviderSnapshot::failure("unavailable", "Quota response format has changed.")
-        }
-    };
-    let rate_limit = usage
-        .get("rate_limit")
-        .or_else(|| usage.get("rateLimit"))
-        .unwrap_or(&usage);
-    // Keep collecting the legacy five-hour window for compatibility and diagnostics.
-    // The UI deliberately ignores this field and presents weekly quota only.
-    let short_window = parse_window(find_window(
-        rate_limit,
-        &[
-            "primary_window",
-            "primaryWindow",
-            "short_window",
-            "shortWindow",
-            "five_hour_window",
-            "fiveHourWindow",
-            "5h",
-            "primary",
-        ],
-        18_000,
-    ));
-    let weekly_window = parse_window(find_window(
-        rate_limit,
-        &[
-            "secondary_window",
-            "secondaryWindow",
-            "weekly_window",
-            "weeklyWindow",
-            "week_window",
-            "weekWindow",
-            "weekly",
-            "secondary",
-            "primary_window",
-            "primaryWindow",
-            "primary",
-        ],
-        604_800,
-    ));
-    if weekly_window.is_none() {
-        return ProviderSnapshot::failure(
-            "unavailable",
-            "Quota response is missing the weekly window.",
-        );
-    }
-
-    let usage_credits = usage
-        .get("rate_limit_reset_credits")
-        .or_else(|| usage.get("rateLimitResetCredits"));
-    let usage_reset_credits = usage_credits.and_then(|value| {
-        integer(
-            value,
-            &[
-                "available_count",
-                "availableCount",
-                "remaining",
-                "count",
-                "quantity",
-            ],
-        )
-    });
-    let usage_reset_credit_expires_at = usage_credits
-        .map(collect_reset_credit_expirations)
-        .unwrap_or_default();
-
-    let (reset_credits, reset_credit_expires_at) = match credits_result {
-        Ok(response) if response.status().is_success() => match limited_json(response).await.ok() {
-            Some(value) => (
-                integer(
-                    &value,
-                    &[
-                        "available_count",
-                        "availableCount",
-                        "remaining",
-                        "count",
-                        "quantity",
-                    ],
-                )
-                .or(usage_reset_credits),
-                {
-                    let expirations = collect_reset_credit_expirations(&value);
-                    if expirations.is_empty() {
-                        usage_reset_credit_expires_at
-                    } else {
-                        expirations
-                    }
-                },
-            ),
-            None => (usage_reset_credits, usage_reset_credit_expires_at),
-        },
-        _ => (usage_reset_credits, usage_reset_credit_expires_at),
-    };
-
-    let updated_at = chrono::Utc::now().to_rfc3339();
-    let rate_limit_snapshot = weekly_window.as_ref().map(|window| RateLimitSnapshot {
-        source: "legacy-api".into(),
-        used_percent: (100.0 - window.remaining_percent).clamp(0.0, 100.0),
-        window_duration_mins: Some(window.window_seconds / 60),
-        resets_at: window.resets_at.clone(),
-        observed_at: updated_at.clone(),
-    });
-    ProviderSnapshot {
-        provider: "codex".into(),
-        display_name: "CODEX".into(),
-        plan: pick_string(&usage, &["plan_type", "planType"]).map(|value| value.to_uppercase()),
-        short_window,
-        weekly_window,
-        monthly_window: None,
-        reset_credits,
-        reset_credit_expires_at,
-        balance_remaining: None,
-        balance_unit: None,
-        rate_limit_snapshot,
-        updated_at,
-        status: "ok".into(),
-        message: None,
     }
 }
 
