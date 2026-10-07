@@ -12,7 +12,6 @@ import { RangeSlider } from "./RangeSlider";
 import { ResetRiskQuotaHeatmap } from "./ResetRiskQuotaHeatmap";
 import { CodexUsagePanel } from "./CodexUsagePanel";
 import { TeamMemberSettings } from "./TeamMemberSettings";
-import { CloudSyncSettings } from "./CloudSyncSettings";
 
 interface Props {
   preferences: WidgetPreferences;
@@ -138,8 +137,6 @@ export function ControlCenter({ preferences, language, comfortFeedback = [], dai
         </nav>
         {page === "usage" ? <CodexUsagePanel zh={zh} initialUsage={comfortUsage} onOpenSettings={() => changePage("settings")} calendarOpen={calendarOpen} onCalendarOpenChange={changeCalendarOpen} calendarPortalTarget={calendarPortalTarget} /> : page === "settings" ? <div className="control-settings-page" aria-label={labels.settings}>
         <TeamMemberSettings usage={comfortUsage} loadingError={comfortUsageError} preferences={preferences} zh={zh} onPreferences={onPreferences} onSaved={onUsageGroupsChange} />
-        <CloudSyncSettings usage={comfortUsage} zh={zh} onSynced={onUsageGroupsChange} />
-
         <section className="minimal-section" aria-labelledby="minimal-display-title">
           <header className="minimal-section-header"><strong id="minimal-display-title">{labels.display}</strong></header>
           <label className="minimal-slider-field">
@@ -195,13 +192,9 @@ export function ControlCenter({ preferences, language, comfortFeedback = [], dai
           </div>
         </section>
 
-        <section className="minimal-section">
-          <header className="minimal-section-header"><strong>{zh ? "应用更新" : "App updates"}</strong><button type="button" onClick={onCheckUpdate}>{zh ? "检查更新" : "Check for updates"}</button></header>
-          <label className="minimal-toggle-row"><span>{zh ? "版本通道" : "Release channel"}</span><select aria-label={zh ? "版本通道" : "Release channel"} value={preferences.updateChannel} onChange={event => updatePreferences({ updateChannel: event.target.value === "beta" ? "beta" : "stable", skippedUpdateVersion: null })}><option value="stable">{zh ? "正式版" : "Stable"}</option><option value="beta">{zh ? "测试版" : "Beta"}</option></select></label>
-          <label className="minimal-toggle-row">
-            <span><strong>{zh ? "自动下载更新" : "Download updates automatically"}</strong><small>{zh ? "后台检查并下载，准备好后提醒你重启安装。" : "Checks in the background and asks you to restart when ready."}</small></span>
-            <span className="switch"><input type="checkbox" aria-label={zh ? "自动下载更新" : "Download updates automatically"} checked={preferences.automaticUpdates} onChange={event => updatePreferences({ automaticUpdates: event.target.checked })} /><i /></span>
-          </label>
+        <section className="minimal-section" aria-label={zh ? "本机安全模式" : "Local safe mode"}>
+          <header className="minimal-section-header"><strong>{zh ? "本机安全模式" : "Local safe mode"}</strong></header>
+          <p>{zh ? "云端/Git同步、其他AI账号读取、Codex auth.json备援与自动更新已停用。Token、模型、Project/Task、历史、成本与每日推荐仍在本机计算。" : "Cloud/Git sync, other AI credential reads, Codex auth.json fallback, and automatic updates are disabled. Token/model/project/task history, cost estimates, and daily recommendations remain local."}</p>
         </section>
         <footer className="minimal-footer"><span>{labels.source}</span><button type="button" onClick={onClose}>{labels.done}</button></footer>
         </div> : <>
