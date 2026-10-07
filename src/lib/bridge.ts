@@ -243,15 +243,11 @@ export async function openExternalUrl(url: string): Promise<void> {
 }
 
 export async function getVolcengineDiagnostics(): Promise<VolcengineDiagnostics> {
-  if (!isTauri()) return mockVolcengineDiagnostics;
-  const { invoke } = await import("@tauri-apps/api/core");
-  return invoke<VolcengineDiagnostics>("get_volcengine_diagnostics");
+  return mockVolcengineDiagnostics;
 }
 
 export async function reconnectVolcengine(): Promise<VolcengineDiagnostics> {
-  if (!isTauri()) return mockVolcengineDiagnostics;
-  const { invoke } = await import("@tauri-apps/api/core");
-  return invoke<VolcengineDiagnostics>("reconnect_volcengine");
+  throw new Error("Third-party provider access is disabled in the local-safe build.");
 }
 
 export async function getPreferences(): Promise<WidgetPreferences> {
