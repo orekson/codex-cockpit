@@ -1,16 +1,9 @@
-mod app_updater;
-mod cloud_sync;
 mod codex;
 mod codex_project_usage;
-mod comfort_sync;
 mod models;
 mod reset_forecast;
-mod shared_settings;
-mod task_sync;
 mod tokei_usage;
 mod usage_sync;
-mod usage_sync_git;
-mod usage_sync_snapshot;
 mod website_reset_probability;
 
 use std::{
@@ -3037,8 +3030,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             tokei_usage::get_tokei_usage,
             usage_sync::get_codex_project_usage,
-            shared_settings::get_person_plan,
-            shared_settings::save_person_plan,
             tokei_usage::get_tokei_groups,
             tokei_usage::save_tokei_groups,
             get_snapshots,
