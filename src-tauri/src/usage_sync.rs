@@ -263,22 +263,13 @@ pub fn get_usage_sync_status(app: tauri::AppHandle) -> Result<SyncStatus, String
 }
 #[tauri::command]
 pub async fn get_codex_project_usage(
-    app: tauri::AppHandle,
+    _app: tauri::AppHandle,
 ) -> Result<codex_project_usage::ProjectUsageSnapshot, String> {
-    let data = app
-        .path()
-        .app_config_dir()
-        .map_err(|_| "sync_storage_unavailable")?;
-    let mut result = codex_project_usage::get_codex_project_usage_with_catalog(Some(
-        crate::cloud_sync::pricing_path(&data),
-    ))
-    .await?;
-    if let Some(settings) = settings_at(&data)? {
-        identify(&mut result, &settings.device_id);
-        result.peer_tasks = crate::task_sync::read_peers(&data, &settings.device_id);
-    }
-    Ok(result)
+    // Local-safe build: scan Codex session/task metadata locally only.
+    // No cloud pricing, peer tasks, Git remotes, or cloud snapshots participate.
+    codex_project_usage::get_codex_project_usage().await
 }
+
 fn synced_comfort_feedback(data: &Path) -> Result<Vec<Value>, String> {
     if settings_at(data)?.is_none() {
         return Ok(Vec::new());
