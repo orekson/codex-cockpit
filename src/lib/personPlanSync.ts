@@ -1,4 +1,3 @@
-import { isTauri } from "./bridge";
 import type { WidgetPreferences } from "../types";
 
 export type PersonPlan = Partial<Pick<WidgetPreferences, "dailyBudgetPercent" | "resetRiskOverridePercent">>;
@@ -17,13 +16,10 @@ export function planPreferences(current: WidgetPreferences, plan: PersonPlan, da
   }
   return next.dailyBudgetPercent !== current.dailyBudgetPercent || next.dailyBudgetLocalDate !== current.dailyBudgetLocalDate || next.resetRiskOverridePercent !== current.resetRiskOverridePercent || next.resetRiskManualEnabled !== current.resetRiskManualEnabled ? next : null;
 }
-export async function getPersonPlan(localDate: string): Promise<PersonPlan> {
-  if (!isTauri()) return {};
-  const { invoke } = await import("@tauri-apps/api/core");
-  return invoke("get_person_plan", { localDate });
+export async function getPersonPlan(_localDate: string): Promise<PersonPlan> {
+  return {};
 }
-export async function savePersonPlan(localDate: string, field: keyof PersonPlan, value: number | null): Promise<void> {
-  if (!isTauri()) return;
-  const { invoke } = await import("@tauri-apps/api/core");
-  await invoke("save_person_plan", { localDate, field, value });
+export async function savePersonPlan(_localDate: string, _field: keyof PersonPlan, _value: number | null): Promise<void> {
+  // Local-safe build: App persists the active plan in local preferences.
+  return;
 }
