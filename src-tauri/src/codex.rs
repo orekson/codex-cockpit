@@ -322,51 +322,7 @@ pub fn read_usage_history(days: usize) -> Vec<DailyQuotaUsage> {
     result
 }
 
-fn collect_reset_credit_expirations(value: &Value) -> Vec<String> {
-    fn visit(value: &Value, output: &mut Vec<String>) {
-        match value {
-            Value::Array(items) => {
-                for item in items {
-                    visit(item, output);
-                }
-            }
-            Value::Object(map) => {
-                if let Some(time) = timestamp(
-                    value,
-                    &[
-                        "expires_at",
-                        "expiresAt",
-                        "expiration_time",
-                        "expirationTime",
-                        "expires",
-                    ],
-                ) {
-                    output.push(time);
-                }
-                for key in [
-                    "credits",
-                    "reset_credits",
-                    "resetCredits",
-                    "available",
-                    "items",
-                    "grants",
-                ] {
-                    if let Some(child) = map.get(key) {
-                        visit(child, output);
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-
-    let mut expirations = Vec::new();
-    visit(value, &mut expirations);
-    expirations.sort();
-    expirations.dedup();
-    expirations
-}
-
+#[cfg(test)]
 fn scale_ratio_field(key: &str, value: f64) -> bool {
     matches!(
         key,
@@ -374,6 +330,7 @@ fn scale_ratio_field(key: &str, value: f64) -> bool {
     ) || (!key.contains("percent") && !key.contains("pct") && value <= 1.0)
 }
 
+#[cfg(test)]
 fn parse_window(value: Option<&Value>) -> Option<UsageWindow> {
     let value = value?;
     let remaining_percent = if let Some((key, remaining)) = number_with_key(
@@ -444,6 +401,7 @@ fn parse_window(value: Option<&Value>) -> Option<UsageWindow> {
     })
 }
 
+#[cfg(test)]
 fn find_window<'a>(
     rate_limit: &'a Value,
     names: &[&str],
