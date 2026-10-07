@@ -1,22 +1,17 @@
-mod antigravity;
 mod app_updater;
 mod cloud_sync;
 mod codex;
 mod codex_project_usage;
 mod comfort_sync;
 mod models;
-mod qoder;
 mod reset_forecast;
 mod shared_settings;
 mod task_sync;
 mod tokei_usage;
-mod trae;
 mod usage_sync;
 mod usage_sync_git;
 mod usage_sync_snapshot;
-mod volcengine;
 mod website_reset_probability;
-mod workbuddy;
 
 use std::{
     fs,
@@ -617,23 +612,6 @@ async fn get_codex_website_reset_probability(
 #[tauri::command]
 fn get_codex_daily_usage_history() -> Vec<codex::DailyQuotaUsage> {
     codex::read_usage_history(90)
-}
-
-#[tauri::command]
-async fn get_volcengine_diagnostics() -> volcengine::VolcengineDiagnostics {
-    volcengine::diagnostics().await
-}
-
-#[tauri::command]
-async fn reconnect_volcengine(
-    state: State<'_, AppState>,
-) -> Result<volcengine::VolcengineDiagnostics, String> {
-    let _guard = state.fetch_lock.lock().await;
-    volcengine::reconnect().await?;
-    if let Ok(mut cache) = state.snapshot_cache.lock() {
-        *cache = None;
-    }
-    Ok(volcengine::diagnostics().await)
 }
 
 fn clamp_position_to_monitor(
