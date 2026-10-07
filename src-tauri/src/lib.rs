@@ -297,27 +297,9 @@ fn apply_short_window_test_override(
 }
 
 async fn collect_snapshots_once(client: &reqwest::Client) -> Vec<ProviderSnapshot> {
-    let qoder_snapshot = qoder::fetch_snapshot();
-    let (
-        codex_snapshot,
-        trae_snapshot,
-        workbuddy_snapshot,
-        volcengine_snapshot,
-        antigravity_snapshot,
-    ) = tokio::join!(
-        codex::fetch_snapshot(client),
-        trae::fetch_snapshot(client),
-        workbuddy::fetch_snapshot(client),
-        volcengine::fetch_snapshot(),
-        antigravity::fetch_snapshot(),
-    );
-    let mut values = vec![codex_snapshot];
-    values.extend(qoder_snapshot);
-    values.extend(trae_snapshot);
-    values.extend(workbuddy_snapshot);
-    values.extend(volcengine_snapshot);
-    values.extend(antigravity_snapshot);
-    values
+    // Local-safe build: Codex only. Do not inspect credentials/databases belonging
+    // to Qoder, Trae, WorkBuddy, Volcengine, or Antigravity.
+    vec![codex::fetch_snapshot(client).await]
 }
 
 async fn collect_snapshots(client: &reqwest::Client) -> Vec<ProviderSnapshot> {
@@ -3005,7 +2987,6 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             if let Some(window) = app.get_webview_window("widget") {
                 let _ = window.show();
@@ -3043,7 +3024,6 @@ pub fn run() {
                 geometry: Mutex::new(None),
                 drag_mode: Mutex::new(None),
             });
-            usage_sync::start(app.handle().clone());
             if setup_tray(app).is_err() {
                 eprintln!("tray setup failed; enabling taskbar fallback");
                 if let Some(window) = app.get_webview_window("widget") {
@@ -3077,22 +3057,10 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            app_updater::check_cockpit_update,
             tokei_usage::get_tokei_usage,
-            usage_sync::get_usage_sync_status,
-            cloud_sync::get_cloud_sync_status,
-            cloud_sync::connect_cloud_sync,
-            cloud_sync::create_cloud_invite,
-            cloud_sync::revoke_cloud_device,
-            cloud_sync::set_cloud_sync_enabled,
-            cloud_sync::set_cloud_task_sharing,
-            usage_sync::save_usage_sync_settings,
-            usage_sync::sync_usage_now,
             usage_sync::get_codex_project_usage,
-            usage_sync::get_synced_comfort_feedback,
             shared_settings::get_person_plan,
             shared_settings::save_person_plan,
-            cloud_sync::exchange_daily_plan,
             tokei_usage::get_tokei_groups,
             tokei_usage::save_tokei_groups,
             get_snapshots,
@@ -3101,8 +3069,6 @@ pub fn run() {
             get_codex_website_reset_probability,
             get_codex_daily_usage,
             get_codex_daily_usage_history,
-            get_volcengine_diagnostics,
-            reconnect_volcengine,
             expand_widget,
             resize_expanded_widget,
             open_control_center,
