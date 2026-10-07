@@ -34,7 +34,7 @@ export const DEFAULT_WIDGET_PREFERENCES: WidgetPreferences = {
   quietHoursEnd: 8,
   notificationCooldownMinutes: 120,
   updateChannel: "beta",
-  automaticUpdates: true,
+  automaticUpdates: false,
 };
 
 export function effectiveCompactLayout(preferences: WidgetPreferences, provider: ProviderId | null): WindowCompactLayout {
@@ -148,7 +148,7 @@ export function normalizeWidgetPreferences(value: LegacyWidgetPreferences | null
     quietHoursEnd: boundedInteger(candidate.quietHoursEnd, DEFAULT_WIDGET_PREFERENCES.quietHoursEnd, 0, 23),
     notificationCooldownMinutes: boundedInteger(candidate.notificationCooldownMinutes, DEFAULT_WIDGET_PREFERENCES.notificationCooldownMinutes, 5, 1440),
     updateChannel: candidate.updateChannel === "stable" ? "stable" : candidate.updateChannel === "beta" ? "beta" : DEFAULT_WIDGET_PREFERENCES.updateChannel,
-    automaticUpdates: booleanValue(candidate.automaticUpdates, DEFAULT_WIDGET_PREFERENCES.automaticUpdates),
+    automaticUpdates: false,
   };
 }
 
